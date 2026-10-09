@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import streamlit as st
 
 def render_about_page():
