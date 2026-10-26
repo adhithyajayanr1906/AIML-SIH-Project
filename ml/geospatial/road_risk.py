@@ -1,51 +1,60 @@
-from typing import Dict, Any, Optional
-from config.config import NER_ROUTES, NER_HUBS
+import geopandas as gpd
+import pyogrio
+import sys
+import os
 
-def get_road_risk_by_id(road_id: str) -> Dict[str, Any]:
-    """
-    Retrieve processed risk information and metadata for a specific road corridor ID.
-    """
-    matched_route = None
-    for u, v, dist_km, base_time, highway in NER_ROUTES:
-        r_id_1 = f"{u} - {v}"
-        r_id_2 = f"{v} - {u}"
-        h_id = highway.replace(" ", "_").lower()
+sys.path.append(os.path.abspath('c:/NER-Smart-Logistics/ml/risk'))
+from environmental_risk import calculate_environmental_risk
+from logistics_risk import calculate_logistics_risk
+
+def build_road_risk():
+    road_path = "c:/NER-Smart-Logistics/data/geospatial/processed/ner_roads.gpkg"
+    env_path = "c:/NER-Smart-Logistics/data/geospatial/raw/India_dataset.gpkg"
+    out_path = "c:/NER-Smart-Logistics/data/geospatial/processed/ner_road_risk.gpkg"
+    
+    print("Loading networks...")
+    gdf_roads = pyogrio.read_dataframe(road_path)
+    
+    # Efficient loading of only necessary env columns
+    env_cols = ['geometry', 'Elev_mean', 'Slope_mean', 'NDVI_mean']
+    gdf_env = pyogrio.read_dataframe(env_path, layer='SUcovariate3857lr_final', columns=env_cols)
+    
+    print(f"Aligning CRS: roads={gdf_roads.crs}, env={gdf_env.crs}")
+    # Convert roads to match env which is EPSG:3857
+    gdf_roads_3857 = gdf_roads.to_crs(gdf_env.crs)
+    
+    print("Spatial R-Tree Indexing and joining...")
+    # sjoin uses R-tree implicitly in geopandas
+    joined = gpd.sjoin(gdf_roads_3857, gdf_env, how='left', predicate='intersects')
+    
+    # Handle duplicates due to multiple polygon intersections by keeping the first hit
+    joined = joined[~joined.index.duplicated(keep='first')].copy()
+    
+    print("Calculating Risk Scores...")
+    # Defaulting fake rainfall anomaly since we don't have real live radar in this batch
+    env_risks = []
+    log_risks = []
+    
+    for idx, row in joined.iterrows():
+        # Example rainfall inputs since we aren't joining real time meteorological radars here
+        r_risk, r_cat, r_factors = calculate_environmental_risk(
+            rainfall_anomaly=40, extreme_indicator=0, 
+            slope=row.get('Slope_mean', 5), 
+            elev=row.get('Elev_mean', 500), 
+            ndvi=row.get('NDVI_mean', 0.5)
+        )
         
-        if road_id in [r_id_1, r_id_2, highway, h_id]:
-            matched_route = (u, v, dist_km, base_time, highway)
-            break
+        l_risk, l_cat, l_factors = calculate_logistics_risk(r_risk, row['length_m'], row.get('highway', 'unknown'))
+        
+        env_risks.append(r_risk)
+        log_risks.append(l_risk)
+        
+    joined['environmental_risk'] = env_risks
+    joined['logistics_risk'] = log_risks
+    
+    print(f"Writing {len(joined)} features to {out_path}...")
+    joined.to_file(out_path, driver='GPKG', engine='pyogrio')
+    print("Completed Spatial Integration.")
 
-    if matched_route:
-        u, v, dist_km, base_time, highway = matched_route
-        # Calculate corridor environmental risk heuristic based on elevation/rainfall
-        risk_prob = 0.25
-        if "Shillong" in (u, v) or "Silchar" in (u, v):
-            risk_prob = 0.65
-        elif "Guwahati" in (u, v) or "Tezpur" in (u, v):
-            risk_prob = 0.40
-
-        risk_level = "LOW" if risk_prob < 0.35 else ("MEDIUM" if risk_prob < 0.70 else "HIGH")
-
-        return {
-            "road_id": road_id,
-            "highway": highway,
-            "origin": u,
-            "destination": v,
-            "distance_km": dist_km,
-            "base_travel_time_min": base_time,
-            "risk_probability": risk_prob,
-            "risk_level": risk_level,
-            "status": "OPEN" if risk_level != "HIGH" else "HIGH_RISK"
-        }
-
-    return {
-        "road_id": road_id,
-        "highway": f"Corridor {road_id}",
-        "origin": "Unknown",
-        "destination": "Unknown",
-        "distance_km": 100.0,
-        "base_travel_time_min": 120,
-        "risk_probability": 0.20,
-        "risk_level": "LOW",
-        "status": "OPEN"
-    }
+if __name__ == '__main__':
+    build_road_risk()

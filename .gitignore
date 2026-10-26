@@ -1,5 +1,48 @@
-.venv/
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.bak
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Unit test / coverage reports
 .pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Node / JS artifacts (from previous prototype)
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# Environment variables & secrets
 .env
+.env.*
+!.env.example
+
+# Large geospatial data files (>100MB / binary artifacts)
+# Note: Raw .gpkg, .pbf, and pickled road network graph exceed GitHub's 100MB limit.
+# Place India_dataset.gpkg, north-eastern-zone-latest.osm.pbf, and ner_roads.gpkg locally.
+*.gpkg
+*.pkl
+*.pbf
+*.db
+*.sqlite3
+
+# Geospatial local data cache
+data/geospatial/raw/
+data/geospatial/processed/*.gpkg
+data/geospatial/processed/*.pkl
+data/route_history.db
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

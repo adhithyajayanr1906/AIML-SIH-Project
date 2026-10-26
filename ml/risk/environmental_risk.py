@@ -1,81 +1,41 @@
-import os
-import joblib
-import json
-import pandas as pd
-import numpy as np
-from typing import Dict, Any
-
-# Environment & Model Paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "risk_model.pkl")
-PREPROCESSOR_PATH = os.path.join(BASE_DIR, "models", "preprocessor.pkl")
-METADATA_PATH = os.path.join(BASE_DIR, "models", "model_metadata.json")
-DATASET_PATH = os.path.join(BASE_DIR, "flood_risk_dataset_india.csv")
-
-def predict_environmental_risk(input_data: Dict[str, Any]) -> Dict[str, Any]:
+def calculate_environmental_risk(rainfall_anomaly, extreme_indicator, slope, elev, ndvi):
     """
-    Predict environmental flood risk probability and risk category from environmental features.
+    Calculates deterministic Environmental Risk Factor (0.0 to 1.0).
+    Based strictly on available covariate datatypes. 
+    Not ML.
     """
-    # Fallback heuristic if model pickle is absent
-    rainfall = float(input_data.get("rainfall_mm", input_data.get("Rainfall (mm)", 100.0)))
-    water_level = float(input_data.get("water_level_m", input_data.get("Water Level (m)", 4.0)))
-    river_discharge = float(input_data.get("river_discharge_m3s", input_data.get("River Discharge (m³/s)", 1500.0)))
-    elevation = float(input_data.get("elevation_m", input_data.get("Elevation (m)", 500.0)))
-    land_cover = str(input_data.get("land_cover", input_data.get("Land Cover", "Forest")))
-    soil_type = str(input_data.get("soil_type", input_data.get("Soil Type", "Loam")))
-
-    probability = 0.20 # Base low probability
+    # Normalize features bounded [0, 1]
+    norm_rain = min(max(rainfall_anomaly / 100.0, 0), 1)
+    norm_slope = min(max(slope / 45.0, 0), 1)  # 45+ deg is max risk
+    norm_elev = max(0, 1 - (elev / 2000.0))  # lower elevations more flood prone 
+    norm_ndvi = max(0, 1 - (min(ndvi, 1))) # lower ndvi means less root strength
     
-    if rainfall > 150.0:
-        probability += 0.35
-    elif rainfall > 80.0:
-        probability += 0.15
-
-    if water_level > 6.0:
-        probability += 0.30
-    elif water_level > 3.5:
-        probability += 0.15
-
-    if river_discharge > 3000.0:
-        probability += 0.20
-
-    if soil_type in ["Clay", "Peat"]:
-        probability += 0.10
-
-    if land_cover == "Water Body":
-        probability += 0.15
-
-    probability = round(min(max(probability, 0.05), 0.98), 4)
-
-    # If saved model exists, use actual model inference
-    if os.path.exists(MODEL_PATH) and os.path.exists(PREPROCESSOR_PATH):
-        try:
-            from src.ml.predict import predict_risk
-            model_res = predict_risk(input_data)
-            probability = model_res.get("probability", probability)
-        except Exception:
-            pass
-
-    if probability < 0.35:
-        risk_level = "LOW"
-    elif probability < 0.70:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "HIGH"
-
-    key_factors = []
-    if rainfall > 150:
-        key_factors.append(f"Heavy Rainfall ({rainfall:.1f} mm)")
-    if water_level > 6.0:
-        key_factors.append(f"Critical Water Level ({water_level:.1f} m)")
-    if river_discharge > 3000:
-        key_factors.append(f"High River Discharge Surge ({river_discharge:.0f} m3/s)")
-    if not key_factors:
-        key_factors.append("Normal Environmental Observations")
-
-    return {
-        "probability": probability,
-        "risk_level": risk_level,
-        "key_factors": key_factors,
-        "methodology": "Data-Driven Environmental Flood Risk Assessment"
+    # Example heuristic weighting
+    w_r = 0.40
+    w_s = 0.30
+    w_e = 0.15
+    w_n = 0.15
+    
+    risk_score = (w_r * norm_rain) + (w_s * norm_slope) + (w_e * norm_elev) + (w_n * norm_ndvi)
+    
+    # Boost if extreme rainfall flag is 1
+    if extreme_indicator == 1:
+        risk_score = min(risk_score * 1.5, 1.0)
+        
+    factors = {
+        "rainfall_risk": round(norm_rain, 3),
+        "slope_risk": round(norm_slope, 3),
+        "elevation_exposure": round(norm_elev, 3),
+        "vegetation_exposure": round(norm_ndvi, 3)
     }
+    
+    if risk_score > 0.75:
+        category = "CRITICAL"
+    elif risk_score > 0.50:
+        category = "HIGH"
+    elif risk_score > 0.25:
+        category = "MODERATE"
+    else:
+        category = "LOW"
+        
+    return risk_score, category, factors

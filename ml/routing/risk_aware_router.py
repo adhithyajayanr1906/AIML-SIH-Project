@@ -1,161 +1,79 @@
-import math
 import networkx as nx
-from typing import Dict, Any, List, Tuple, Optional
-from config.config import NER_HUBS, NER_ROUTES
-from src.routing.route_optimizer import build_logistics_graph, haversine_distance, find_nearest_road
 
-def find_node_by_name_or_coords(param: Any) -> Optional[str]:
-    """
-    Map coordinate object {lat, lon} or name string to nearest network graph hub node.
-    """
-    if isinstance(param, str) and param in NER_HUBS:
-        return param
+def build_risk_graph(gdf_edges):
+    """ Builds graph with dual weights for Routing. """
+    G = nx.Graph()
+    for idx, row in gdf_edges.iterrows():
+        coords = list(row.geometry.coords)
+        if len(coords) < 2: continue
+        
+        src = coords[0]
+        dst = coords[-1]
+        
+        # Risk penalty is factored heavily: e.g. a CRITICAL logistics risk (1.0) adds 5x distance penalty
+        import math
+        raw_log_risk = row.get('logistics_risk')
+        is_log_missing = raw_log_risk is None or (isinstance(raw_log_risk, float) and math.isnan(raw_log_risk))
+        log_risk = 0.0 if is_log_missing else float(raw_log_risk)
 
-    if isinstance(param, dict) and "lat" in param and "lon" in param:
-        lat = float(param["lat"])
-        lon = float(param["lon"])
-        min_dist = float("inf")
-        closest_node = None
-        for name, coords in NER_HUBS.items():
-            d = haversine_distance(lat, lon, coords["lat"], coords["lon"])
-            if d < min_dist:
-                min_dist = d
-                closest_node = name
-        return closest_node
+        raw_env_risk = row.get('environmental_risk')
+        is_env_missing = raw_env_risk is None or (isinstance(raw_env_risk, float) and math.isnan(raw_env_risk))
+        env_risk = 0.0 if is_env_missing else float(raw_env_risk)
 
-    if isinstance(param, (list, tuple)) and len(param) >= 2:
-        lat = float(param[0])
-        lon = float(param[1])
-        min_dist = float("inf")
-        closest_node = None
-        for name, coords in NER_HUBS.items():
-            d = haversine_distance(lat, lon, coords["lat"], coords["lon"])
-            if d < min_dist:
-                min_dist = d
-                closest_node = name
-        return closest_node
+        covariates_available = not (is_log_missing or is_env_missing)
 
-    return None
+        length_m = float(row.get('length_m', 0))
+        risk_penalty = length_m * (log_risk * 5.0)
+        total_cost = length_m + risk_penalty
+        
+        G.add_edge(src, dst,
+                   road_id=idx,
+                   length_km=length_m/1000.0,
+                   road_type=row.get('highway', 'unknown'),
+                   travel_cost=length_m,
+                   environmental_risk=env_risk,
+                   logistics_risk=log_risk,
+                   risk_category=row.get('logistics_category', 'LOW'),
+                   risk_penalty=risk_penalty,
+                   total_cost=total_cost,
+                   covariates_available=covariates_available,
+                   geometry=row.geometry)
+    return G
 
-def compute_routes(
-    origin_param: Any,
-    destination_param: Any,
-    preference: str = "risk_aware"
-) -> Dict[str, Any]:
-    """
-    Compute shortest path and risk-aware path between origin and destination hubs.
-    """
-    origin_node = find_node_by_name_or_coords(origin_param)
-    dest_node = find_node_by_name_or_coords(destination_param)
+def get_nearest_node(G, point):
+    """ Snaps projected (x, y) to nearest explicit node. """
+    nodes = list(G.nodes)
+    if not nodes: return None
+    # Calculate euclidean approx fast
+    nearest = min(nodes, key=lambda n: (n[0]-point[0])**2 + (n[1]-point[1])**2)
+    return nearest
 
-    if not origin_node or not dest_node:
-        return {
-            "status": "unavailable",
-            "message": "Origin or destination could not be mapped to the regional road graph.",
-            "shortest_route": None,
-            "risk_aware_route": None
-        }
+def get_nearest_nodes(G, point, k=10):
+    """ Return up to k nearest nodes sorted by Euclidean distance. """
+    nodes = list(G.nodes)
+    if not nodes: return []
+    sorted_nodes = sorted(nodes, key=lambda n: (n[0]-point[0])**2 + (n[1]-point[1])**2)
+    return sorted_nodes[:k]
 
-    if origin_node == dest_node:
-        coords = [NER_HUBS[origin_node]["lat"], NER_HUBS[origin_node]["lon"]]
-        single_route = {
-            "path": [origin_node],
-            "geometry": [coords],
-            "distance_km": 0.0,
-            "travel_time_min": 0,
-            "risk_score": 0.0,
-            "risk_level": "LOW",
-            "cost": 0.0,
-            "algorithm": "Dijkstra"
-        }
-        return {
-            "status": "success",
-            "message": "Origin and destination are the same location.",
-            "shortest_route": single_route,
-            "risk_aware_route": single_route
-        }
-
-    G, edge_details = build_logistics_graph()
-
-    # 1. Shortest Route (Dijkstra using base travel time / distance)
-    try:
-        shortest_path = nx.dijkstra_path(G, origin_node, dest_node, weight="base_time_min")
-        shortest_dist = 0.0
-        shortest_time = 0.0
-        shortest_probs = []
-        shortest_geom = []
-
-        for node in shortest_path:
-            shortest_geom.append([NER_HUBS[node]["lat"], NER_HUBS[node]["lon"]])
-
-        for i in range(len(shortest_path) - 1):
-            u, v = shortest_path[i], shortest_path[i + 1]
-            e = G[u][v]
-            shortest_dist += e["distance_km"]
-            shortest_time += e["base_time_min"]
-            shortest_probs.append(e["risk_prob"])
-
-        avg_prob = sum(shortest_probs) / max(len(shortest_probs), 1)
-        shortest_route = {
-            "path": shortest_path,
-            "geometry": shortest_geom,
-            "distance_km": round(shortest_dist, 1),
-            "travel_time_min": int(shortest_time),
-            "risk_score": round(avg_prob, 4),
-            "risk_level": "LOW" if avg_prob < 0.35 else ("MEDIUM" if avg_prob < 0.70 else "HIGH"),
-            "cost": round(shortest_time, 1),
-            "algorithm": "Dijkstra Shortest Path"
-        }
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
-        shortest_route = None
-
-    # 2. Risk-Aware Route (A* / Dijkstra using cost_safest)
-    try:
-        def heuristic(u, v):
-            return haversine_distance(NER_HUBS[u]["lat"], NER_HUBS[u]["lon"], NER_HUBS[v]["lat"], NER_HUBS[v]["lon"])
-
-        risk_path = nx.astype = nx.astar_path(G, origin_node, dest_node, heuristic=heuristic, weight="cost_safest")
-        risk_dist = 0.0
-        risk_time = 0.0
-        risk_probs = []
-        risk_geom = []
-
-        for node in risk_path:
-            risk_geom.append([NER_HUBS[node]["lat"], NER_HUBS[node]["lon"]])
-
-        for i in range(len(risk_path) - 1):
-            u, v = risk_path[i], risk_path[i + 1]
-            e = G[u][v]
-            risk_dist += e["distance_km"]
-            risk_time += e["base_time_min"] + e["delay_min"]
-            risk_probs.append(e["risk_prob"])
-
-        avg_risk_prob = sum(risk_probs) / max(len(risk_probs), 1)
-        risk_aware_route = {
-            "path": risk_path,
-            "geometry": risk_geom,
-            "distance_km": round(risk_dist, 1),
-            "travel_time_min": int(risk_time),
-            "risk_score": round(avg_risk_prob, 4),
-            "risk_level": "LOW" if avg_risk_prob < 0.35 else ("MEDIUM" if avg_risk_prob < 0.70 else "HIGH"),
-            "cost": round(risk_time * (1.0 + avg_risk_prob), 1),
-            "algorithm": "A* Risk-Aware Path"
-        }
-    except Exception:
-        risk_aware_route = shortest_route
-
-    if not shortest_route and not risk_aware_route:
-        return {
-            "status": "unavailable",
-            "message": f"No connected road network path found between {origin_node} and {dest_node}.",
-            "shortest_route": None,
-            "risk_aware_route": None
-        }
-
+def shortest_path_dijkstra(G, start, end, weight='travel_cost'):
+    """ Returns standard shortest path metrics. """
+    path = nx.dijkstra_path(G, start, end, weight=weight)
+    
+    total_dist = 0
+    total_cost = 0
+    geom_list = []
+    
+    for i in range(len(path)-1):
+        data = G.get_edge_data(path[i], path[i+1])
+        total_dist += data['length_km']
+        total_cost += data[weight]
+        geom_list.append(((path[i][1], path[i][0]), (path[i+1][1], path[i+1][0])))
+        
     return {
-        "status": "success",
-        "origin": origin_node,
-        "destination": dest_node,
-        "shortest_route": shortest_route,
-        "risk_aware_route": risk_aware_route or shortest_route
+        "distance_km": round(total_dist, 2),
+        "total_cost": round(total_cost, 2),
+        "segments": len(path)-1,
+        "eta_available": False,
+        "coords": geom_list,
+        "path_nodes": path
     }

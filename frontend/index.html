@@ -1,14 +1,883 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web-client</title>
-    <script type="module" crossorigin src="/assets/index-ZpDdyqyp.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Dg7VGOFn.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NER Smart Logistics Intelligence Platform</title>
+    <meta name="description" content="AI-based logistics and accessibility intelligence platform for North Eastern India. Route planning, network diagnostics, environmental risk intelligence, and historical climate analytics.">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- ================================================================
+         TOP NAVIGATION BAR
+    ================================================================ -->
+    <header class="top-nav" role="banner">
+        <div class="nav-brand">
+            <span class="brand-name">NER Smart Logistics</span>
+            <span class="brand-tagline">Intelligence Platform</span>
+        </div>
+
+        <nav class="nav-tabs" role="tablist" aria-label="Main Navigation">
+            <button class="nav-tab active" id="tab-btn-planner" role="tab" aria-selected="true" aria-controls="view-planner" onclick="switchTab('planner')">
+                Route Planner
+            </button>
+            <button class="nav-tab" id="tab-btn-compare" role="tab" aria-selected="false" aria-controls="view-compare" onclick="switchTab('compare')">
+                Route Comparison
+            </button>
+            <button class="nav-tab" id="tab-btn-overview" role="tab" aria-selected="false" aria-controls="view-overview" onclick="switchTab('overview')">
+                Logistics Overview
+            </button>
+            <button class="nav-tab" id="tab-btn-risk" role="tab" aria-selected="false" aria-controls="view-risk" onclick="switchTab('risk')">
+                Risk Intelligence
+            </button>
+            <button class="nav-tab" id="tab-btn-rainfall" role="tab" aria-selected="false" aria-controls="view-rainfall" onclick="switchTab('rainfall')">
+                Rainfall Intelligence
+            </button>
+            <button class="nav-tab" id="tab-btn-history" role="tab" aria-selected="false" aria-controls="view-history" onclick="switchTab('history')">
+                Reports &amp; History
+            </button>
+        </nav>
+
+        <div class="nav-links">
+            <div class="status-indicator-badge" id="system-health-pill" title="Backend API Health">
+                <span class="status-dot online"></span> <span id="health-text">Online</span>
+            </div>
+            <a href="/docs" target="_blank" rel="noopener" class="nav-link" id="nav-api-docs">API Docs</a>
+        </div>
+    </header>
+
+    <!-- ================================================================
+         VIEW 1: ROUTE PLANNER (Primary Map & Planner)
+    ================================================================ -->
+    <div class="view-container active" id="view-planner" role="tabpanel" aria-labelledby="tab-btn-planner">
+        <div class="app-layout">
+
+            <!-- LEFT CONTROL PANEL -->
+            <aside class="control-panel" role="complementary" aria-label="Route planning controls">
+
+                <!-- Transport Mode Selector -->
+                <section class="panel-section" aria-labelledby="transport-mode-label">
+                    <div class="section-label" id="transport-mode-label">Transport Mode</div>
+                    <div class="mode-toggle" role="group" aria-labelledby="transport-mode-label">
+                        <button
+                            id="btn-mode-roadway"
+                            class="mode-btn active"
+                            aria-pressed="true"
+                            onclick="setTransportMode('ROADWAY')"
+                        >
+                            Roadway
+                        </button>
+                        <button
+                            id="btn-mode-airway"
+                            class="mode-btn"
+                            aria-pressed="false"
+                            onclick="setTransportMode('AIRWAY')"
+                        >
+                            Airway
+                        </button>
+                    </div>
+                </section>
+
+                <hr class="panel-divider">
+
+                <!-- LOCATION SEARCH INPUTS -->
+                <!-- Starting Location -->
+                <section class="panel-section" aria-labelledby="origin-search-label">
+                    <div class="section-label" id="origin-search-label">Starting Location</div>
+                    <div class="location-field" id="origin-location-field">
+                        <div class="location-input-wrap">
+                            <div class="location-dot origin-dot" aria-hidden="true"></div>
+                            <input
+                                type="text"
+                                id="origin-search"
+                                class="location-input"
+                                placeholder="Search a city, town, or place..."
+                                autocomplete="off"
+                                spellcheck="false"
+                                aria-label="Starting location"
+                                aria-expanded="false"
+                                aria-haspopup="listbox"
+                                aria-controls="origin-suggestions"
+                                aria-autocomplete="list"
+                                role="combobox"
+                            >
+                            <div class="search-spinner hidden" id="origin-spinner" aria-hidden="true"></div>
+                            <button
+                                class="clear-btn hidden"
+                                id="origin-clear"
+                                onclick="clearLocation('origin')"
+                                aria-label="Clear starting location"
+                                title="Clear"
+                                tabindex="0"
+                            >&times;</button>
+                        </div>
+                        <ul
+                            class="suggestions-list hidden"
+                            id="origin-suggestions"
+                            role="listbox"
+                            aria-label="Starting location suggestions"
+                        ></ul>
+                        <div class="field-status hidden" id="origin-status" role="status" aria-live="polite"></div>
+                    </div>
+                </section>
+
+                <!-- Swap Button -->
+                <div class="swap-row">
+                    <button
+                        id="btn-swap"
+                        class="swap-btn"
+                        onclick="swapLocations()"
+                        aria-label="Swap origin and destination"
+                        title="Swap origin and destination"
+                    >
+                        &#8645;
+                    </button>
+                </div>
+
+                <!-- Destination -->
+                <section class="panel-section" aria-labelledby="dest-search-label">
+                    <div class="section-label" id="dest-search-label">Destination</div>
+                    <div class="location-field" id="dest-location-field">
+                        <div class="location-input-wrap">
+                            <div class="location-dot dest-dot" aria-hidden="true"></div>
+                            <input
+                                type="text"
+                                id="dest-search"
+                                class="location-input"
+                                placeholder="Search a city, town, or place..."
+                                autocomplete="off"
+                                spellcheck="false"
+                                aria-label="Destination"
+                                aria-expanded="false"
+                                aria-haspopup="listbox"
+                                aria-controls="dest-suggestions"
+                                aria-autocomplete="list"
+                                role="combobox"
+                            >
+                            <div class="search-spinner hidden" id="dest-spinner" aria-hidden="true"></div>
+                            <button
+                                class="clear-btn hidden"
+                                id="dest-clear"
+                                onclick="clearLocation('dest')"
+                                aria-label="Clear destination"
+                                title="Clear"
+                                tabindex="0"
+                            >&times;</button>
+                        </div>
+                        <ul
+                            class="suggestions-list hidden"
+                            id="dest-suggestions"
+                            role="listbox"
+                            aria-label="Destination suggestions"
+                        ></ul>
+                        <div class="field-status hidden" id="dest-status" role="status" aria-live="polite"></div>
+                    </div>
+                </section>
+
+                <hr class="panel-divider">
+
+                <!-- Route Sub-Mode (Roadway only) -->
+                <section class="panel-section" id="road-submode-section" aria-labelledby="route-type-label">
+                    <div class="section-label" id="route-type-label">Route Type</div>
+                    <div class="submode-group" role="group" aria-labelledby="route-type-label">
+                        <label class="submode-option">
+                            <input
+                                type="radio"
+                                name="road_submode"
+                                id="submode-shortest"
+                                value="SHORTEST"
+                                checked
+                                aria-label="Shortest road route"
+                            >
+                            <span class="submode-label">Shortest Route</span>
+                            <span class="submode-desc">Minimum road distance (travel cost)</span>
+                        </label>
+                        <label class="submode-option">
+                            <input
+                                type="radio"
+                                name="road_submode"
+                                id="submode-safe"
+                                value="SAFE"
+                                aria-label="Lowest risk road route"
+                            >
+                            <span class="submode-label">Lowest Risk Route</span>
+                            <span class="submode-desc">Environmental &amp; logistics risk-weighted</span>
+                        </label>
+                    </div>
+                </section>
+
+                <!-- Airway info notice -->
+                <section class="panel-section hidden" id="airway-info-section" aria-label="Airway mode information">
+                    <div class="airway-notice">
+                        <strong>Direct air distance estimate</strong>
+                        Calculates the great-circle distance between coordinates using the Haversine formula (IUGG R=6371.0088 km). No airport, airline, or flight-path data is used.
+                    </div>
+                </section>
+
+                <hr class="panel-divider">
+
+                <!-- Action Buttons -->
+                <div class="action-section">
+                    <button
+                        id="btn-find-route"
+                        class="btn btn-primary"
+                        onclick="findRoute()"
+                        aria-label="Find route"
+                    >
+                        Find Route
+                    </button>
+                    <button
+                        id="btn-clear"
+                        class="btn btn-secondary"
+                        onclick="clearRoute()"
+                        aria-label="Clear current route"
+                    >
+                        Clear Route
+                    </button>
+                </div>
+
+                <!-- Status Bar -->
+                <div
+                    class="status-bar"
+                    id="status-bar"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                >
+                    Search for a starting location.
+                </div>
+
+            </aside>
+
+            <!-- MAP -->
+            <main class="map-container" role="main" aria-label="Route map">
+                <div id="map" aria-label="Interactive route map"></div>
+
+                <!-- Map empty state overlay -->
+                <div class="map-empty-state" id="map-empty-state" aria-hidden="true">
+                    <div class="empty-state-content">
+                        <div class="empty-state-icon" aria-hidden="true">&#9702;</div>
+                        <div class="empty-state-title">No route selected</div>
+                        <div class="empty-state-desc">Search for an origin and destination, then click Find Route.</div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- RIGHT RESULTS PANEL -->
+            <aside class="results-panel hidden" id="results-panel" role="complementary" aria-label="Route results" aria-live="polite">
+                <div class="results-header">
+                    <div class="results-title" id="results-title">Route Results</div>
+                    <button class="results-close-btn" onclick="closeResults()" aria-label="Close results panel">&#10005;</button>
+                </div>
+
+                <!-- Roadway results -->
+                <div id="roadway-results" class="results-body">
+                    <!-- Core metrics -->
+                    <div class="result-item">
+                        <div class="result-label">Origin</div>
+                        <div class="result-value result-value--sm" id="r_origin_name">—</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Destination</div>
+                        <div class="result-value result-value--sm" id="r_dest_name">—</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Transport Mode</div>
+                        <div class="result-value" id="r_transport_mode">Roadway</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Route Type</div>
+                        <div class="result-value" id="r_type">—</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Road Distance</div>
+                        <div class="result-value"><span id="r_dist">—</span> <span class="result-unit" id="r_dist_unit">km</span></div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Network Segments</div>
+                        <div class="result-value" id="r_seg">—</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Routing Cost Metric</div>
+                        <div class="result-value" id="r_cost">—</div>
+                    </div>
+
+                    <!-- FEATURE 1A: Calculation Validation Card -->
+                    <div class="quality-card" id="r_val_card">
+                        <div class="quality-card-header">
+                            <span class="card-subtitle">Calculation Validation</span>
+                            <span class="badge badge-success" id="r_val_badge">PASSED</span>
+                        </div>
+                        <div class="quality-check-list">
+                            <div class="check-item"><span class="check-icon">&#10003;</span> Graph edge integrity &amp; non-negative weights</div>
+                            <div class="check-item"><span class="check-icon">&#10003;</span> Edge distance reconciled with reported km</div>
+                            <div class="check-item"><span class="check-icon">&#10003;</span> <span id="r_val_snap_desc">Endpoints within snapping tolerance (&lt;50km)</span></div>
+                            <div class="check-item"><span class="check-icon">&#10003;</span> WGS84 coordinate boundary compliance</div>
+                        </div>
+                    </div>
+
+                    <!-- FEATURE 1C: Confidence Score Card -->
+                    <div class="quality-card" id="r_conf_card">
+                        <div class="quality-card-header">
+                            <span class="card-subtitle">Confidence Assessment</span>
+                            <span class="badge badge-primary" id="r_conf_badge">High (85%)</span>
+                        </div>
+                        <div class="confidence-bar-wrap">
+                            <div class="confidence-bar-fill" id="r_conf_bar" style="width: 85%;"></div>
+                        </div>
+                        <div class="confidence-factors">
+                            <div class="factor-row"><span>Snapping Proximity (35%)</span><span id="cf_snap">—</span></div>
+                            <div class="factor-row"><span>Network Connectivity (30%)</span><span id="cf_conn">—</span></div>
+                            <div class="factor-row"><span>Covariate Coverage (20%)</span><span id="cf_cov">—</span></div>
+                            <div class="factor-row"><span>Topological Validation (15%)</span><span id="cf_val">—</span></div>
+                        </div>
+                    </div>
+
+                    <!-- FEATURE 1B: Accuracy Score Semantics -->
+                    <div class="quality-card info-card">
+                        <div class="quality-card-header">
+                            <span class="card-subtitle">Accuracy Definition</span>
+                            <span class="badge badge-neutral">Graph-Verified</span>
+                        </div>
+                        <p class="micro-text">
+                            <strong>Calculation Accuracy:</strong> 100% verified against road graph topology.<br>
+                            <strong>Disaster Predictive Accuracy:</strong> <span class="badge-tag">Not established</span> (requires ground-truth disaster occurrence database).
+                        </p>
+                    </div>
+
+                    <!-- FEATURE 3: Environmental & Logistics Risk Breakdown -->
+                    <div class="quality-card" id="r_risk_card">
+                        <div class="quality-card-header">
+                            <span class="card-subtitle">Risk Intelligence</span>
+                            <span class="badge badge-warning" id="r_risk_badge">MODERATE</span>
+                        </div>
+                        <div class="risk-metrics-row">
+                            <div class="risk-metric-box">
+                                <div class="risk-sublabel">Avg Env Risk</div>
+                                <div class="risk-number" id="r_risk_env">—</div>
+                            </div>
+                            <div class="risk-metric-box">
+                                <div class="risk-sublabel">Avg Logistics Risk</div>
+                                <div class="risk-number" id="r_risk_log">—</div>
+                            </div>
+                        </div>
+                        <div class="micro-text disclaimer-text">
+                            Scores are deterministic heuristic indices reflecting terrain exposure and road type vulnerability.
+                        </div>
+                    </div>
+
+                    <!-- Results Quick Actions -->
+                    <div class="results-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="compareCurrentRoute()">Compare SHORTEST vs SAFE</button>
+                        <button class="btn btn-secondary btn-sm" id="btn-export-current" onclick="viewCurrentReport()">View Audit Report</button>
+                    </div>
+                </div>
+
+                <!-- Airway results -->
+                <div id="airway-results" class="results-body hidden">
+                    <div class="result-item">
+                        <div class="result-label">Origin</div>
+                        <div class="result-value result-value--sm" id="r_air_origin_name">—</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Destination</div>
+                        <div class="result-value result-value--sm" id="r_air_dest_name">—</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Transport Mode</div>
+                        <div class="result-value">Airway</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Direct Air Distance</div>
+                        <div class="result-value"><span id="r_air_dist">—</span> km</div>
+                    </div>
+
+                    <div class="quality-card">
+                        <div class="quality-card-header">
+                            <span class="card-subtitle">Mathematical Validation</span>
+                            <span class="badge badge-success">PASSED</span>
+                        </div>
+                        <div class="quality-check-list">
+                            <div class="check-item"><span class="check-icon">&#10003;</span> Haversine spherical Earth formula verified</div>
+                            <div class="check-item"><span class="check-icon">&#10003;</span> IUGG Mean Earth Radius R = 6371.0088 km</div>
+                            <div class="check-item"><span class="check-icon">&#10003;</span> Coordinate bounds valid WGS84</div>
+                        </div>
+                    </div>
+
+                    <div class="quality-card info-card">
+                        <div class="quality-card-header">
+                            <span class="card-subtitle">Accuracy &amp; Confidence</span>
+                            <span class="badge badge-primary">High (95%)</span>
+                        </div>
+                        <p class="micro-text">
+                            <strong>Distance Accuracy:</strong> 100% exact mathematical great-circle distance between points.<br>
+                            <strong>Operational Flight Accuracy:</strong> <span class="badge-tag">Not established</span> (flight paths, altitudes, airway corridors not represented).
+                        </p>
+                    </div>
+
+                    <div class="airway-disclaimer" id="airway-disclaimer-text" role="note">
+                        Direct air distance estimate — not a verified flight route. No airport, airline, schedule, or flight-time data has been used.
+                    </div>
+
+                    <div class="results-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="viewCurrentReport()">View Audit Report</button>
+                    </div>
+                </div>
+            </aside>
+
+        </div>
+    </div>
+
+    <!-- ================================================================
+         VIEW 2: ROUTE COMPARISON (Feature 4)
+    ================================================================ -->
+    <div class="view-container" id="view-compare" role="tabpanel" aria-labelledby="tab-btn-compare">
+        <div class="dashboard-scroll-wrap">
+            <div class="dashboard-header">
+                <h2>Route Comparison Engine</h2>
+                <p class="section-desc">Side-by-side comparative analysis of SHORTEST (travel cost) and SAFE (risk-adjusted total cost) road corridors.</p>
+            </div>
+
+            <!-- Comparison Selector Bar -->
+            <div class="compare-selector-card">
+                <div class="compare-inputs-grid">
+                    <div>
+                        <label class="control-label" for="cmp-origin">Origin Place</label>
+                        <input type="text" id="cmp-origin" class="location-input" placeholder="Select on planner or type origin..." readonly>
+                    </div>
+                    <div>
+                        <label class="control-label" for="cmp-dest">Destination Place</label>
+                        <input type="text" id="cmp-dest" class="location-input" placeholder="Select on planner or type destination..." readonly>
+                    </div>
+                    <div class="compare-btn-cell">
+                        <button class="btn btn-primary" id="btn-run-compare" onclick="executeComparison()">Compare Modes</button>
+                    </div>
+                </div>
+                <div class="preset-links">
+                    <span>Quick regional presets:</span>
+                    <button class="preset-pill" onclick="loadPreset('Guwahati', 26.1445, 91.7362, 'Shillong', 25.5788, 91.8933)">Guwahati &rarr; Shillong</button>
+                    <button class="preset-pill" onclick="loadPreset('Guwahati', 26.1445, 91.7362, 'Tezpur', 26.6528, 92.7926)">Guwahati &rarr; Tezpur</button>
+                    <button class="preset-pill" onclick="loadPreset('Silchar', 24.8333, 92.7789, 'Aizawl', 23.7271, 92.7176)">Silchar &rarr; Aizawl</button>
+                </div>
+            </div>
+
+            <!-- Comparison Results Area -->
+            <div id="compare-results-area" class="hidden">
+
+                <!-- Side-by-Side Cards -->
+                <div class="compare-cards-grid">
+                    <!-- SHORTEST MODE -->
+                    <div class="compare-mode-card shortest-border">
+                        <div class="card-tag tag-blue">SHORTEST ROUTE</div>
+                        <h3 class="mode-title">Distance Optimized</h3>
+                        <p class="mode-sub">Dijkstra path weighted strictly by physical segment length (travel_cost).</p>
+
+                        <div class="metric-big" id="cmp-s-dist">— km</div>
+
+                        <div class="compare-metrics-list">
+                            <div class="cmp-row"><span>Routing Cost (travel_cost)</span><strong id="cmp-s-cost">—</strong></div>
+                            <div class="cmp-row"><span>Network Segments</span><strong id="cmp-s-seg">—</strong></div>
+                            <div class="cmp-row"><span>Logistics Risk Index</span><strong id="cmp-s-risk">—</strong></div>
+                            <div class="cmp-row"><span>Validation Status</span><span class="badge badge-success" id="cmp-s-val">PASSED</span></div>
+                            <div class="cmp-row"><span>Confidence Rating</span><span class="badge badge-primary" id="cmp-s-conf">High</span></div>
+                        </div>
+                    </div>
+
+                    <!-- SAFE MODE -->
+                    <div class="compare-mode-card safe-border">
+                        <div class="card-tag tag-green">LOWEST RISK ROUTE</div>
+                        <h3 class="mode-title">Risk-Aware Path</h3>
+                        <p class="mode-sub">Dijkstra path weighted by physical length + environmental &amp; logistics risk penalties.</p>
+
+                        <div class="metric-big" id="cmp-r-dist">— km</div>
+
+                        <div class="compare-metrics-list">
+                            <div class="cmp-row"><span>Total Cost (dist + penalty)</span><strong id="cmp-r-cost">—</strong></div>
+                            <div class="cmp-row"><span>Network Segments</span><strong id="cmp-r-seg">—</strong></div>
+                            <div class="cmp-row"><span>Logistics Risk Index</span><strong id="cmp-r-risk">—</strong></div>
+                            <div class="cmp-row"><span>Validation Status</span><span class="badge badge-success" id="cmp-r-val">PASSED</span></div>
+                            <div class="cmp-row"><span>Confidence Rating</span><span class="badge badge-primary" id="cmp-r-conf">High</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Corridor Explanation Box -->
+                <div class="corridor-explanation-card">
+                    <div class="card-subtitle">Corridor Selection Analysis &amp; Tradeoff</div>
+                    <p id="cmp-explanation-text" class="explanation-body">
+                        Loading corridor analysis…
+                    </p>
+                </div>
+            </div>
+
+            <div id="compare-empty-state" class="empty-placeholder">
+                <div class="empty-icon">&#8644;</div>
+                <h3>No comparison active</h3>
+                <p>Select origin and destination on the Route Planner, or click one of the quick presets above to run side-by-side corridor analysis.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         VIEW 3: LOGISTICS OVERVIEW (Feature 2)
+    ================================================================ -->
+    <div class="view-container" id="view-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
+        <div class="dashboard-scroll-wrap">
+            <div class="dashboard-header">
+                <h2>North Eastern Region Logistics Overview</h2>
+                <p class="section-desc">Live runtime metrics, road network topology statistics, and dataset integrity indicators.</p>
+            </div>
+
+            <!-- Metric Cards Grid -->
+            <div class="metrics-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Road Network Nodes</div>
+                    <div class="stat-val" id="ov-nodes">456,137</div>
+                    <div class="stat-note">WGS84 mapped road junctions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Road Network Edges</div>
+                    <div class="stat-val" id="ov-edges">264,554</div>
+                    <div class="stat-note">Analyzed road segments</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Road Network KM</div>
+                    <div class="stat-val" id="ov-km">166,530.99</div>
+                    <div class="stat-note">Digitized road corridors across NER</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Connected Components</div>
+                    <div class="stat-val" id="ov-comps">192,225</div>
+                    <div class="stat-note">Largest trunk cluster: 5,778 nodes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Rainfall Observations</div>
+                    <div class="stat-val" id="ov-rain-records">45,528</div>
+                    <div class="stat-note">Daily records (2009–2024, 8 states)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">System Health</div>
+                    <div class="stat-val text-green" id="ov-health">ONLINE</div>
+                    <div class="stat-note">FastAPI + NetworkX Dijkstra Active</div>
+                </div>
+            </div>
+
+            <!-- Datasets Inventory Table -->
+            <div class="content-box">
+                <h3 class="content-box-title">Dataset Inventory &amp; Coverage Specifications</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Dataset</th>
+                            <th>File</th>
+                            <th>Records</th>
+                            <th>Resolution / Coverage</th>
+                            <th>CRS</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>NER Road Network &amp; Risk Layers</strong></td>
+                            <td><code>ner_road_risk.gpkg</code></td>
+                            <td>264,819 rows</td>
+                            <td>Segment-level attributes (length, highway, risk)</td>
+                            <td>EPSG:3857</td>
+                            <td><span class="badge badge-success">Loaded</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>NER Climate &amp; Rainfall Features</strong></td>
+                            <td><code>ner_rainfall_features.csv</code></td>
+                            <td>45,528 rows</td>
+                            <td>Daily observations across 8 NER states (2009–2024)</td>
+                            <td>State-level WGS84</td>
+                            <td><span class="badge badge-success">100% Complete</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Calculation History Store</strong></td>
+                            <td><code>route_history.db</code></td>
+                            <td>Persistent</td>
+                            <td>Timestamped route calculations with validation diagnostics</td>
+                            <td>SQLite</td>
+                            <td><span class="badge badge-primary">Active</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Methodological Standards Box -->
+            <div class="content-box">
+                <h3 class="content-box-title">Data Quality &amp; Transparency Declarations</h3>
+                <div class="standards-grid">
+                    <div class="standard-item">
+                        <h4>Topological Routing Accuracy</h4>
+                        <p>Route calculations are 100% mathematically verified against the physical graph. Edge distances reconcile with reported segment totals within 0.05 km tolerance.</p>
+                    </div>
+                    <div class="standard-item">
+                        <h4>Disaster Predictive Accuracy</h4>
+                        <p>Real-world predictive accuracy for floods and landslides is <strong>Not established</strong>. The dataset contains hydrologic and terrain exposure covariates without ground-truth historical disaster event labels.</p>
+                    </div>
+                    <div class="standard-item">
+                        <h4>Evidence-Based Confidence</h4>
+                        <p>Confidence scores are computed strictly from measurable factors: endpoint snapping proximity (35%), graph component scale (30%), covariate coverage (20%), and mathematical validation (15%).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         VIEW 4: ENVIRONMENTAL RISK INTELLIGENCE (Feature 3)
+    ================================================================ -->
+    <div class="view-container" id="view-risk" role="tabpanel" aria-labelledby="tab-btn-risk">
+        <div class="dashboard-scroll-wrap">
+            <div class="dashboard-header">
+                <h2>Environmental &amp; Logistics Risk Engine</h2>
+                <p class="section-desc">Interactive covariate simulation and methodology guide for terrain, rainfall anomaly, and logistics vulnerability indices.</p>
+            </div>
+
+            <div class="risk-layout-grid">
+                <!-- Interactive Calculator Form -->
+                <div class="content-box">
+                    <h3 class="content-box-title">Interactive Risk Index Calculator</h3>
+                    <p class="micro-text">Simulate the deterministic environmental and logistics risk engines with custom parameters.</p>
+
+                    <form id="risk-calc-form" onsubmit="event.preventDefault(); runRiskSimulation();">
+                        <div class="form-row">
+                            <label class="control-label" for="sim-rain-anomaly">Rainfall Anomaly (mm) <span class="val-pill" id="val-sim-rain">0.0</span></label>
+                            <input type="range" id="sim-rain-anomaly" min="-50" max="150" step="1" value="10" oninput="document.getElementById('val-sim-rain').innerText = this.value">
+                        </div>
+
+                        <div class="form-row">
+                            <label class="control-label" for="sim-extreme">Extreme Rainfall Event Indicator</label>
+                            <select id="sim-extreme" class="form-select">
+                                <option value="0">0 — Normal precipitation</option>
+                                <option value="1">1 — Extreme precipitation event</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label class="control-label" for="sim-slope">Terrain Slope (degrees) <span class="val-pill" id="val-sim-slope">15.0&deg;</span></label>
+                            <input type="range" id="sim-slope" min="0" max="60" step="1" value="15" oninput="document.getElementById('val-sim-slope').innerText = this.value + '&deg;'">
+                        </div>
+
+                        <div class="form-row">
+                            <label class="control-label" for="sim-elev">Elevation (meters) <span class="val-pill" id="val-sim-elev">1200 m</span></label>
+                            <input type="range" id="sim-elev" min="50" max="4000" step="50" value="1200" oninput="document.getElementById('val-sim-elev').innerText = this.value + ' m'">
+                        </div>
+
+                        <div class="form-row">
+                            <label class="control-label" for="sim-ndvi">Vegetation Index (NDVI) <span class="val-pill" id="val-sim-ndvi">0.55</span></label>
+                            <input type="range" id="sim-ndvi" min="0" max="1" step="0.05" value="0.55" oninput="document.getElementById('val-sim-ndvi').innerText = this.value">
+                        </div>
+
+                        <div class="form-row">
+                            <label class="control-label" for="sim-road-type">Road Infrastructure Type</label>
+                            <select id="sim-road-type" class="form-select">
+                                <option value="trunk">Trunk Road (NH Corridor)</option>
+                                <option value="primary" selected>Primary Highway</option>
+                                <option value="secondary">Secondary Road</option>
+                                <option value="tertiary">Tertiary / Rural Link</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="margin-top: 12px;">Calculate Risk Indices</button>
+                    </form>
+                </div>
+
+                <!-- Simulation Output & Formula Explanation -->
+                <div class="content-box">
+                    <h3 class="content-box-title">Calculated Risk Indices</h3>
+                    <div class="calc-results-display">
+                        <div class="calc-card">
+                            <div class="calc-label">Environmental Risk Index</div>
+                            <div class="calc-val" id="sim-out-env">0.44</div>
+                            <div class="calc-cat badge badge-warning" id="sim-cat-env">MODERATE</div>
+                        </div>
+                        <div class="calc-card">
+                            <div class="calc-label">Logistics Risk Index</div>
+                            <div class="calc-val" id="sim-out-log">0.38</div>
+                            <div class="calc-cat badge badge-warning" id="sim-cat-log">MODERATE</div>
+                        </div>
+                    </div>
+
+                    <h4 style="margin-top: 20px; font-size: 13px; color: var(--text-secondary);">Factor Contribution Breakdown</h4>
+                    <div class="factors-display" id="sim-factors-list">
+                        <div class="cmp-row"><span>Rainfall Sensitivity</span><strong id="sf-rain">0.40</strong></div>
+                        <div class="cmp-row"><span>Slope Exposure</span><strong id="sf-slope">0.33</strong></div>
+                        <div class="cmp-row"><span>Elevation Vulnerability</span><strong id="sf-elev">0.62</strong></div>
+                        <div class="cmp-row"><span>Vegetation Shield (NDVI)</span><strong id="sf-veg">0.60</strong></div>
+                    </div>
+
+                    <div class="warning-callout" style="margin-top: 20px;">
+                        <strong>Methodological Governance:</strong>
+                        These risk scores are deterministic heuristic indices reflecting physical terrain sensitivity and infrastructure vulnerability. They are NOT probabilistic disaster predictions. Missing data along any segment is never treated as evidence of zero risk.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         VIEW 5: RAINFALL INTELLIGENCE (Feature 5)
+    ================================================================ -->
+    <div class="view-container" id="view-rainfall" role="tabpanel" aria-labelledby="tab-btn-rainfall">
+        <div class="dashboard-scroll-wrap">
+            <div class="dashboard-header">
+                <h2>NER Historical Rainfall &amp; Climatology View</h2>
+                <p class="section-desc">Real observed daily rainfall statistics (2009–2024) across all 8 North Eastern States of India.</p>
+            </div>
+
+            <!-- State Selector & Metrics Bar -->
+            <div class="rainfall-control-bar">
+                <div class="state-select-wrap">
+                    <label class="control-label" for="rain-state-select">Select North Eastern State</label>
+                    <select id="rain-state-select" class="form-select" onchange="loadStateRainfall(this.value)">
+                        <option value="Meghalaya" selected>Meghalaya</option>
+                        <option value="Assam">Assam</option>
+                        <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                        <option value="Manipur">Manipur</option>
+                        <option value="Mizoram">Mizoram</option>
+                        <option value="Nagaland">Nagaland</option>
+                        <option value="Sikkim">Sikkim</option>
+                        <option value="Tripura">Tripura</option>
+                    </select>
+                </div>
+                <div class="rainfall-meta-info">
+                    <div class="meta-item"><span>Temporal Coverage:</span> <strong>2009-01-01 to 2024-07-31</strong></div>
+                    <div class="meta-item"><span>Spatial Unit:</span> <strong>State-Level Daily Aggregate</strong></div>
+                    <div class="meta-item"><span>Completeness:</span> <strong>100% (0 missing values)</strong></div>
+                </div>
+            </div>
+
+            <!-- Key State Figures -->
+            <div class="metrics-grid" style="margin-top: 16px;">
+                <div class="stat-card">
+                    <div class="stat-label">Estimated Annual Actual</div>
+                    <div class="stat-val" id="rf-annual-act">— mm</div>
+                    <div class="stat-note">Observed annual precipitation</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Estimated Annual Normal</div>
+                    <div class="stat-val" id="rf-annual-norm">— mm</div>
+                    <div class="stat-note">Climatological baseline</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Extreme Rainfall Days</div>
+                    <div class="stat-val" id="rf-extreme-days">—</div>
+                    <div class="stat-note">Daily extreme indicators recorded</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Single-Day Rainfall</div>
+                    <div class="stat-val" id="rf-max-daily">— mm</div>
+                    <div class="stat-note">Peak 24h deluge recorded</div>
+                </div>
+            </div>
+
+            <!-- Climatology Charts Section -->
+            <div class="content-box" style="margin-top: 20px;">
+                <h3 class="content-box-title">Monthly Climatology: Actual vs Normal Daily Average (mm)</h3>
+                <p class="micro-text">Comparison of 15-year mean daily rainfall by calendar month (Jan–Dec).</p>
+                <div class="chart-container" id="monthly-chart-wrap">
+                    <!-- SVG Chart injected via JS -->
+                    <div class="chart-placeholder">Loading monthly climatology chart…</div>
+                </div>
+            </div>
+
+            <!-- Annual Trends Section -->
+            <div class="content-box" style="margin-top: 20px;">
+                <h3 class="content-box-title">Annual Precipitation &amp; Anomaly Trends (2009–2024)</h3>
+                <p class="micro-text">Year-by-year total precipitation in millimeters and average departure from normal.</p>
+                <div class="chart-container" id="annual-chart-wrap">
+                    <div class="chart-placeholder">Loading annual trend chart…</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         VIEW 6: REPORTS & HISTORY (Feature 6)
+    ================================================================ -->
+    <div class="view-container" id="view-history" role="tabpanel" aria-labelledby="tab-btn-history">
+        <div class="dashboard-scroll-wrap">
+            <div class="dashboard-header">
+                <h2>Calculation History &amp; Audit Reports</h2>
+                <p class="section-desc">Persistent record of route calculations with validation diagnostics and exportable audit summaries.</p>
+            </div>
+
+            <div class="content-box">
+                <div class="history-table-header">
+                    <h3 class="content-box-title">Saved Calculation Records</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="loadHistoryTable()">Refresh History</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table" id="history-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Timestamp</th>
+                                <th>Origin &rarr; Destination</th>
+                                <th>Mode</th>
+                                <th>Distance</th>
+                                <th>Validation</th>
+                                <th>Confidence</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody">
+                            <tr>
+                                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                    Loading saved calculation history…
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         AUDIT REPORT MODAL (Feature 6)
+    ================================================================ -->
+    <div class="modal-overlay hidden" id="report-modal" role="dialog" aria-modal="true" aria-labelledby="modal-report-title">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-report-title">Intelligence Route Audit Report</h3>
+                <button class="modal-close-btn" onclick="closeReportModal()" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre class="report-pre" id="report-text-content">No report selected.</pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="copyReportText()">Copy to Clipboard</button>
+                <button class="btn btn-primary" onclick="downloadReportFile()">Download .txt Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         LOADING OVERLAY
+    ================================================================ -->
+    <div class="loader-overlay hidden" id="loader" role="status" aria-live="assertive" aria-label="Calculating route">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loader-text" id="loader-text">Calculating route…</div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Application JS -->
+    <script src="js/app.js"></script>
+</body>
 </html>

@@ -1,37 +1,43 @@
-from typing import Dict, Any
-
-def calculate_logistics_risk(
-    environmental_risk: float,
-    road_accessibility_risk: float = 0.0,
-    field_report_risk: float = 0.0
-) -> Dict[str, Any]:
+def calculate_logistics_risk(env_risk_score, length_m, road_type):
     """
-    Logistics Risk Scoring Decision Support Calculation:
-    Logistics Risk Score = (0.60 * Environmental Risk) + (0.25 * Road Risk) + (0.15 * Field Report Risk)
+    Calculates deterministic Logistics Risk Score.
     """
-    env_risk = float(min(max(environmental_risk, 0.0), 1.0))
-    road_risk = float(min(max(road_accessibility_risk, 0.0), 1.0))
-    report_risk = float(min(max(field_report_risk, 0.0), 1.0))
-
-    score = (0.60 * env_risk) + (0.25 * road_risk) + (0.15 * report_risk)
-    score = round(min(max(score, 0.0), 1.0), 4)
-
-    if score < 0.35:
-        risk_level = "LOW"
-    elif score < 0.70:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "HIGH"
-
-    estimated_delay_min = int(round(10.0 + (score * 120.0)))
-
-    return {
-        "logistics_risk_score": score,
-        "risk_level": risk_level,
-        "estimated_delay_minutes": estimated_delay_min,
-        "weights_used": {
-            "environmental_risk_weight": 0.60,
-            "road_accessibility_weight": 0.25,
-            "field_report_weight": 0.15
-        }
+    # Road vulnerability multipliers based on assumed structural integrity
+    # Motorways handle environment better than unclassified tracks
+    road_vulnerability = {
+        'motorway': 0.5,
+        'trunk': 0.6,
+        'primary': 0.7,
+        'secondary': 0.8,
+        'tertiary': 0.9,
+        'residential': 1.0,
+        'unclassified': 1.2,
+        'service': 1.0,
+        'unknown': 1.0
     }
+    
+    vul_factor = road_vulnerability.get(road_type.lower(), 1.0)
+    
+    # Distance scaling: longer roads have more exposure length
+    # Assume base segment length penalty (log scale to prevent extreme inflation)
+    import math
+    if length_m <= 0: length_m = 1
+    dist_exposure = max(1, math.log10(length_m) / 3) 
+    
+    logistics_risk = min(env_risk_score * vul_factor * dist_exposure, 1.0)
+    
+    if logistics_risk > 0.75:
+        category = "CRITICAL"
+    elif logistics_risk > 0.50:
+        category = "HIGH"
+    elif logistics_risk > 0.25:
+        category = "MODERATE"
+    else:
+        category = "LOW"
+        
+    factors = {
+        "environmental_risk_base": round(env_risk_score, 3),
+        "infrastructure_vulnerability": vul_factor,
+        "exposure_distance_penalty": round(dist_exposure, 3)
+    }
+    return logistics_risk, category, factors

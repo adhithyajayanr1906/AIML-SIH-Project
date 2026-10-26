@@ -1,0 +1,1 @@
+# Road Graph Validation\n- Nodes: 456137\n- Edges: 264554\n- Connected Components: 192225\n- Zero Length Edges: 0\n
